@@ -4,6 +4,7 @@ import { PG_CONNECTION } from "../database/database.providers";
 import { CreateUserDTO } from "./dto/createUser.dto";
 import { UpdateUserDTO } from "./dto/updateUser.dto";
 import { User } from "./entities/user.entity";
+import { UserRole } from "./enums/role.enum";
 
 @Injectable()
 export class UsersRepository {
@@ -15,11 +16,11 @@ export class UsersRepository {
         createUserDto: CreateUserDTO,
         avatar: { url: string; public_id: string },
     ): Promise<User> {
-        const { name, email, password } = createUserDto;
+        const { name, email, password, role = UserRole.USER } = createUserDto;
         const query = `
-            INSERT INTO users (name, email, password, avatar_url, avatar_public_id)
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING id, name, email, avatar_url, avatar_public_id, created_at, updated_at
+            INSERT INTO users (name, email, password, avatar_url, avatar_public_id, role)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id, name, email, avatar_url, avatar_public_id, role, created_at, updated_at
         `;
         const result = await this.pool.query<User>(query, [
             name,
@@ -27,18 +28,25 @@ export class UsersRepository {
             password,
             avatar.url,
             avatar.public_id,
+            role,
         ]);
         return result.rows[0];
     }
 
     async findUserById(id: number): Promise<User | null> {
-        const query = `SELECT id, name, email, avatar_url, avatar_public_id, created_at, updated_at FROM users WHERE id = $1`;
+        const query = `SELECT id, name, email, avatar_url, avatar_public_id, role, created_at, updated_at FROM users WHERE id = $1`;
         const result = await this.pool.query<User>(query, [id]);
         return result.rows[0] || null;
     }
 
+    async findUserByEmail(email: string): Promise<User | null> {
+        const query = `SELECT id, name, email, password, avatar_url, avatar_public_id, role, created_at, updated_at FROM users WHERE email = $1`;
+        const result = await this.pool.query<User>(query, [email]);
+        return result.rows[0] || null;
+    }
+
     async findAllUsers(): Promise<User[]> {
-        const query = `SELECT id, name, email, avatar_url, avatar_public_id, created_at, updated_at FROM users ORDER BY id ASC`;
+        const query = `SELECT id, name, email, avatar_url, avatar_public_id, role, created_at, updated_at FROM users ORDER BY id ASC`;
         const result = await this.pool.query<User>(query);
         return result.rows;
     }
@@ -64,6 +72,10 @@ export class UsersRepository {
             updates.push(`password = $${paramIndex++}`);
             values.push(updateUserDto.password);
         }
+        if (updateUserDto.role !== undefined) {
+            updates.push(`role = $${paramIndex++}`);
+            values.push(updateUserDto.role);
+        }
         if (avatar) {
             updates.push(`avatar_url = $${paramIndex++}`);
             values.push(avatar.url);
@@ -82,7 +94,7 @@ export class UsersRepository {
             UPDATE users
             SET ${updates.join(', ')}
             WHERE id = $${paramIndex}
-            RETURNING id, name, email, avatar_url, avatar_public_id, created_at, updated_at
+            RETURNING id, name, email, avatar_url, avatar_public_id, role, created_at, updated_at
         `;
 
         const result = await this.pool.query<User>(query, values);
@@ -90,7 +102,7 @@ export class UsersRepository {
     }
 
     async deleteUser(id: number): Promise<User | null> {
-        const query = `DELETE FROM users WHERE id = $1 RETURNING id, name, email, avatar_url, avatar_public_id, created_at, updated_at`;
+        const query = `DELETE FROM users WHERE id = $1 RETURNING id, name, email, avatar_url, avatar_public_id, role, created_at, updated_at`;
         const result = await this.pool.query<User>(query, [id]);
         return result.rows[0] || null;
     }

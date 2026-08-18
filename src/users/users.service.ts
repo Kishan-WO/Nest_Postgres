@@ -1,10 +1,11 @@
-import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
 import * as bcrypt from "bcryptjs";
 import { CreateUserDTO } from "./dto/createUser.dto";
 import { UpdateUserDTO } from "./dto/updateUser.dto";
 import { UsersRepository } from "./users.repository";
 import { User } from "./entities/user.entity";
 import { CloudinaryService } from "../cloudinary/cloudinary.service";
+import { UserRole } from "./enums/role.enum";
 
 @Injectable()
 export class UsersService {
@@ -54,8 +55,17 @@ export class UsersService {
     async updateUser(
         id: number,
         updateUserDTO: UpdateUserDTO,
+        currentUser: any,
         file?: Express.Multer.File,
     ): Promise<User> {
+        if (currentUser.role !== UserRole.ADMIN && currentUser.sub !== id) {
+            throw new ForbiddenException('You can only update your own profile');
+        }
+
+        if (currentUser.role !== UserRole.ADMIN && updateUserDTO.role) {
+            throw new ForbiddenException('Only administrators can modify user roles');
+        }
+
         const existingUser = await this.usersRepository.findUserById(id);
         if (!existingUser) {
             throw new NotFoundException(`User with ID ${id} not found`);

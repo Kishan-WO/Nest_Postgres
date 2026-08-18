@@ -1,10 +1,24 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, UploadedFile, UseGuards, UseInterceptors, UsePipes } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { UsersService } from "./users.service";
 import { CreateUserDTO } from "./dto/createUser.dto";
 import { UpdateUserDTO } from "./dto/updateUser.dto";
-import { ApiBody, ApiConsumes, ApiOperation, ApiParam, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { ApiTags } from "@nestjs/swagger";
 import { User } from "./entities/user.entity";
+import { TrimPipe } from "../common/pipes/trim.pipe";
+import { PositiveIntPipe } from "../common/pipes/positive-int.pipe";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { RolesGuard } from "../auth/guards/roles.guard";
+import { Roles } from "../auth/decorators/roles.decorator";
+import { UserRole } from "./enums/role.enum";
+import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import {
+    ApiCreateUserDocs,
+    ApiDeleteUserDocs,
+    ApiFindAllUsersDocs,
+    ApiFindUserByIdDocs,
+    ApiUpdateUserDocs,
+} from "./swagger/users.swagger";
 
 @ApiTags('Users')
 @Controller('users')
@@ -12,103 +26,52 @@ export class UsersController {
     constructor(private readonly usersService: UsersService) { }
 
     @Get()
-    @ApiOperation({
-        summary: "Get all users",
-        description: "Retrieves a list of all registered users",
-    })
-    @ApiResponse({ status: 200, description: 'Users retrieved successfully.' })
+    @ApiFindAllUsersDocs()
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.ADMIN)
     async findAllUsers(): Promise<User[]> {
         return this.usersService.findAllUsers();
     }
 
     @Get(':id')
-    @ApiOperation({
-        summary: "Get user by ID",
-        description: "Retrieves details of a specific user by ID",
-    })
-    @ApiParam({ name: 'id', description: 'User ID', example: 1 })
-    @ApiResponse({ status: 200, description: 'User retrieved successfully.' })
-    @ApiResponse({ status: 404, description: 'User not found.' })
+    @ApiFindUserByIdDocs()
+    @UseGuards(JwtAuthGuard)
     async findUserById(
-        @Param('id', ParseIntPipe) id: number,
+        @Param('id', PositiveIntPipe) id: number,
     ): Promise<User> {
         return this.usersService.findUserById(id);
     }
 
     @Post()
+    @ApiCreateUserDocs()
     @UseInterceptors(FileInterceptor('file'))
-    @ApiConsumes('multipart/form-data')
-    @ApiOperation({
-        summary: "Create a new user",
-        description: "Creates a new user with the provided details and mandatory avatar file upload",
-    })
-    @ApiBody({
-        schema: {
-            type: 'object',
-            required: ['name', 'email', 'password', 'file'],
-            properties: {
-                name: { type: 'string', example: 'John Doe' },
-                email: { type: 'string', example: 'john@example.com' },
-                password: { type: 'string', example: 'secret123' },
-                file: {
-                    type: 'string',
-                    format: 'binary',
-                    description: 'User avatar file',
-                },
-            },
-        },
-    })
-    @ApiResponse({ status: 201, description: 'User created successfully.' })
     async createUser(
-        @Body() createUserDto: CreateUserDTO,
+        @Body(TrimPipe) createUserDto: CreateUserDTO,
         @UploadedFile() file: Express.Multer.File,
     ): Promise<User> {
         return this.usersService.createUser(createUserDto, file);
     }
 
     @Patch(':id')
+    @ApiUpdateUserDocs()
+    @UseGuards(JwtAuthGuard)
+    @UsePipes(TrimPipe)
     @UseInterceptors(FileInterceptor('file'))
-    @ApiConsumes('multipart/form-data')
-    @ApiOperation({
-        summary: "Update user details",
-        description: "Updates user details (name, email, password) and optionally replaces the avatar file",
-    })
-    @ApiParam({ name: 'id', description: 'User ID', example: 1 })
-    @ApiBody({
-        schema: {
-            type: 'object',
-            properties: {
-                name: { type: 'string', example: 'John Doe' },
-                email: { type: 'string', example: 'john@example.com' },
-                password: { type: 'string', example: 'secret123' },
-                file: {
-                    type: 'string',
-                    format: 'binary',
-                    description: 'Optional new user avatar file',
-                },
-            },
-        },
-    })
-    @ApiResponse({ status: 200, description: 'User updated successfully.' })
-    @ApiResponse({ status: 404, description: 'User not found.' })
     async updateUser(
-        @Param('id', ParseIntPipe) id: number,
+        @Param('id', PositiveIntPipe) id: number,
         @Body() updateUserDto: UpdateUserDTO,
+        @CurrentUser() currentUser: any,
         @UploadedFile() file?: Express.Multer.File,
     ): Promise<User> {
-        return this.usersService.updateUser(id, updateUserDto, file);
+        return this.usersService.updateUser(id, updateUserDto, currentUser, file);
     }
 
     @Delete(':id')
-    @ApiOperation({
-        summary: "Delete user",
-        description: "Deletes a user by ID and removes their avatar from Cloudinary",
-    })
-    @ApiParam({ name: 'id', description: 'User ID', example: 1 })
-    @ApiResponse({ status: 200, description: 'User deleted successfully.' })
-    @ApiResponse({ status: 404, description: 'User not found.' })
+    @ApiDeleteUserDocs()
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(UserRole.ADMIN)
     async deleteUser(
-        @Param('id', ParseIntPipe) id: number,
+        @Param('id', PositiveIntPipe) id: number,
     ): Promise<{ message: string; deletedUser: User }> {
         return this.usersService.deleteUser(id);
     }
